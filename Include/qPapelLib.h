@@ -1,8 +1,4 @@
-// ════════════════════════════════════════════════════════════════
-//  qPapelLib.h  —  qPapelAuth DLL Loader Library Interface
-//  Distribute this header + qPapelLib.lib to developers.
-//  Protects internal loader stub logic from developer inspection.
-// ════════════════════════════════════════════════════════════════
+
 #pragma once
 
 #ifndef WIN32_LEAN_AND_MEAN
