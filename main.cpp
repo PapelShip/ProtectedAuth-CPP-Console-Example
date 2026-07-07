@@ -67,16 +67,7 @@ void SessionCheckLoop(QPCTX ctx) {
 
 void tmploop(QPCTX ctx) {
     while (true) {
-        if (qpapel::CheckIntegrity(ctx) != 0) {
-            qpapel::ReportEvent(ctx, "tamper", "ban", "{\"scrnshot\":true}");
-            std::exit(-1);
-        }
 
-        if (qpapel::CheckDebugger(ctx) != 0) {
-            qpapel::ReportEvent(ctx, "dbgdthigh", "ban", "{\"scrnshot\":true}");
-            std::this_thread::sleep_for(std::chrono::seconds(3));
-            std::exit(-1);
-        }
 
 
         qpapel::OptimizeClock(ctx);
@@ -88,7 +79,7 @@ void tmploop(QPCTX ctx) {
 int main() {
     std::cout << _xorrr_("--- PapelShip C++ Demo ---") << std::endl;
     std::cout << _xorrr_("[Loader] Initializing...") << std::endl;
-
+    
     if (!qpapel::Init()) {
         std::cout << _xorrr_("[FAILED] Core stub initialization failed.") << std::endl;
         return 1;
@@ -100,9 +91,9 @@ int main() {
         return 1;
     }
 
-    qpapel::SetConfig(ctx, _xorrr_("apikey"), "", 0, _xorrr_("version"));
+    qpapel::SetConfig(ctx, _xorrr_("apikey"), "", 0, _xorrr_("1.0.0"));
 
-    qpapel::CheckIntegrity(ctx);
+    //qpapel::CheckIntegrity(ctx);
 
     if (qpapel::Connect(ctx)) {
         std::cout << _xorrr_("[SUCCESS] Secure connection established.") << std::endl;
@@ -111,9 +102,7 @@ int main() {
         std::string licenseKey;
         std::cin >> licenseKey;
 
-        std::thread t(tmploop, ctx);
-        t.detach();
-
+    
         std::cout << _xorrr_("[Auth] Validating key...") << std::endl;
 
         char* sessionToken = qpapel::Authenticate(ctx, licenseKey.c_str());
@@ -122,6 +111,8 @@ int main() {
             std::cout << "[SUCCESS] License Validated!" << std::endl;
             qpapel::FreeString(sessionToken); 
             g_sessionActive = true;
+            std::thread t(tmploop, ctx);
+            t.detach();
 
             std::thread watchdog(SessionCheckLoop, ctx);
             watchdog.detach();
