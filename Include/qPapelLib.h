@@ -1,3 +1,4 @@
+
 #pragma once
 
 #ifndef WIN32_LEAN_AND_MEAN
@@ -10,7 +11,7 @@
 extern "C" {
 #endif
 
-// ── Types ───────────────────────────────────────────────────────
+
 typedef void* QPCTX;
 
 typedef struct {
@@ -20,7 +21,7 @@ typedef struct {
     char payloadType[32];
 } QP_ProductInfo;
 
-// ── Raw C Export Symbols (Global Scope) ─────────────────────────
+
 bool  QP_StubInit();
 QPCTX QP_CreateContext();
 void  QP_DestroyContext(QPCTX c);
