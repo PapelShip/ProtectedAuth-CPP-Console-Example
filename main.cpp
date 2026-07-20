@@ -43,7 +43,7 @@ int main() {
     }
 
     qpapel::SetConfig(ctx, _xorrr_("apikey"), "", 0, _xorrr_("2.0.0"));
-
+    qpapel::QP_DisableWatchdog(ctx);
     if (!qpapel::Connect(ctx)) {
         char* err = qpapel::GetLastStatus(ctx);
         std::cout << _xorrr_("[FAIL] Connection failed: ") << (err ? err : "Unknown") << std::endl;
