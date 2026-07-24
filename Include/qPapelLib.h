@@ -91,7 +91,7 @@ namespace qpapel
     inline void  FreeBytes(unsigned char* p)                                                         { QP_FreeBytes(p); }
 }
 
-
+template <size_t N, int K>
 struct XorStr {
     char data[N];
     constexpr XorStr(const char* str) : data{} {
