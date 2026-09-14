@@ -6,11 +6,11 @@
 #endif
 #include <windows.h>
 #include <cstdint>
+#include <cstddef>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
-
 
 typedef void* QPCTX;
 
@@ -28,7 +28,6 @@ void  QP_SetConfig(QPCTX c, const char* apiKey, const char* ip, int port, const 
 void  QP_DisableWatchdog(QPCTX c);
 int   QP_Connect(QPCTX c);
 char* QP_Authenticate(QPCTX c, const char* licenseKey);
-char* QP_GetAutoLoginKey(QPCTX c);
 char* QP_GetLicenseInfo(QPCTX c, const char* licenseKey);
 char* QP_FetchString(QPCTX c, const char* stringId, const char* licenseKey);
 int   QP_FetchFile(QPCTX c, const char* fileId, const char* licenseKey, unsigned char** outData, int* outLen);
@@ -66,7 +65,6 @@ namespace qpapel
     inline void  DisableWatchdog(QPCTX c)                                                            { QP_DisableWatchdog(c); }
     inline int   Connect(QPCTX c)                                                                    { return QP_Connect(c); }
     inline char* Authenticate(QPCTX c, const char* lk)                                               { return QP_Authenticate(c, lk); }
-    inline char* GetAutoLoginKey(QPCTX c)                                                            { return QP_GetAutoLoginKey(c); }
     inline char* GetLicenseInfo(QPCTX c, const char* lk)                                             { return QP_GetLicenseInfo(c, lk); }
     inline char* FetchString(QPCTX c, const char* id, const char* lk)                                { return QP_FetchString(c, id, lk); }
     inline int   FetchFile(QPCTX c, const char* id, const char* lk, unsigned char** outD, int* outL) { return QP_FetchFile(c, id, lk, outD, outL); }
@@ -86,29 +84,49 @@ namespace qpapel
     inline int   PE_LoadProduct(QPCTX c, const char* accessId, const char* licenseKey, char** outError, unsigned int* outPid) { return QP_PE_LoadProduct(c, accessId, licenseKey, outError, outPid); }
     inline int   GetAvailableProducts(QPCTX c, const char* licenseKey, QP_ProductInfo* outProducts, int maxProducts, int* outCount) { return QP_GetAvailableProducts(c, licenseKey, outProducts, maxProducts, outCount); }
     inline void  GetTraceUuid(QPCTX c, char* outUuid, int maxLen)                                    { QP_GetTraceUuid(c, outUuid, maxLen); }
-    inline int   GetTraceHierarchy(QPCTX c, int* outHierarchy, int maxCount)                        { return QP_GetTraceHierarchy(c, outHierarchy, maxCount); }
+    inline int   GetTraceHierarchy(QPCTX c, int* outHierarchy, int maxCount)                         { return QP_GetTraceHierarchy(c, outHierarchy, maxCount); }
     inline void  FreeString(char* s)                                                                 { QP_FreeString(s); }
     inline void  FreeBytes(unsigned char* p)                                                         { QP_FreeBytes(p); }
 }
 
-template <size_t N, int K>
+template <size_t N, int K1, int K2 = 0x5A>
 struct XorStr {
-    char data[N];
-    constexpr XorStr(const char* str) : data{} {
+    char encrypted[N];
+
+    constexpr XorStr(const char* s) : encrypted{} {
         for (size_t i = 0; i < N; ++i) {
-            data[i] = str[i] ^ (K + i);
+            encrypted[i] = static_cast<char>(s[i] ^ static_cast<char>(K1 + (i * 7) + K2));
         }
     }
-    __forceinline const char* get() const {
-        thread_local char dec_data[N];
-        for (size_t i = 0; i < N; ++i) {
-            dec_data[i] = data[i] ^ (K + i);
+
+    struct DecryptedString {
+        char buffer[N];
+
+        __forceinline DecryptedString(const char* enc) {
+            for (size_t i = 0; i < N; ++i) {
+                buffer[i] = static_cast<char>(enc[i] ^ static_cast<char>(K1 + (i * 7) + K2));
+            }
         }
-        return dec_data;
+
+        __forceinline const char* c_str() const { return buffer; }
+        __forceinline const char* get() const { return buffer; }
+        __forceinline operator const char*() const { return buffer; }
+        __forceinline operator std::string() const { return std::string(buffer, (N > 0 && buffer[N - 1] == '\0') ? N - 1 : N); }
+        __forceinline std::string str() const { return std::string(buffer, (N > 0 && buffer[N - 1] == '\0') ? N - 1 : N); }
+
+        template <typename Stream>
+        friend Stream& operator<<(Stream& os, const DecryptedString& ds) {
+            return os << ds.buffer;
+        }
+    };
+
+    __forceinline DecryptedString get() const {
+        return DecryptedString(encrypted);
     }
 };
 
-#define _xorrr_(s) ([]{ constexpr XorStr<sizeof(s), __COUNTER__> x(s); return x.get(); }())
-
+#ifndef _xorrr_
+#define _xorrr_(s) (XorStr<sizeof(s), __COUNTER__, 0x5A>(s).get())
 #endif
 
+#endif
