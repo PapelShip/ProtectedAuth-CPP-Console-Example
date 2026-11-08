@@ -1,4 +1,3 @@
-
 #pragma once
 
 #ifndef WIN32_LEAN_AND_MEAN
@@ -7,6 +6,7 @@
 #include <windows.h>
 #include <cstdint>
 #include <cstddef>
+#include <string>
 
 #ifdef __cplusplus
 extern "C" {
@@ -51,6 +51,22 @@ int   QP_GetTraceHierarchy(QPCTX c, int* outHierarchy, int maxCount);
 void  QP_FreeString(char* s);
 void  QP_FreeBytes(unsigned char* p);
 
+int   QP_SessionGuard(QPCTX c);
+unsigned int QP_GetSignedResourceVersion(void);
+char* QP_GetMachineHash(QPCTX c);
+char* QP_AuthenticateSigned(QPCTX c, const char* licenseKey, const unsigned char* nonce32,
+    unsigned char** leaseProof, int* proofLen);
+int QP_FetchStringSigned(QPCTX c, const char* id, const char* licenseKey,
+    const unsigned char* nonce32, unsigned char** payload, int* payloadLen,
+    unsigned char** proof, int* proofLen);
+int QP_FetchFileSigned(QPCTX c, const char* id, const char* licenseKey,
+    const unsigned char* nonce32, unsigned char** payload, int* payloadLen,
+    unsigned char** proof, int* proofLen);
+
+void  QP_SetConfigEncrypted(QPCTX c,
+                            const unsigned char* encKey, int encLen, int rotor,
+                            const char* ip, int port, const char* version);
+
 #ifdef __cplusplus
 }
 #endif
@@ -62,6 +78,7 @@ namespace qpapel
     inline QPCTX CreateContext()                                                                     { return QP_CreateContext(); }
     inline void  DestroyContext(QPCTX c)                                                             { QP_DestroyContext(c); }
     inline void  SetConfig(QPCTX c, const char* k, const char* ip, int p, const char* v)             { QP_SetConfig(c, k, ip, p, v); }
+    inline void  SetConfigEncrypted(QPCTX c, const unsigned char* enc, int n, int rotor, const char* ip, int p, const char* v) { QP_SetConfigEncrypted(c, enc, n, rotor, ip, p, v); }
     inline void  DisableWatchdog(QPCTX c)                                                            { QP_DisableWatchdog(c); }
     inline int   Connect(QPCTX c)                                                                    { return QP_Connect(c); }
     inline char* Authenticate(QPCTX c, const char* lk)                                               { return QP_Authenticate(c, lk); }
@@ -87,46 +104,62 @@ namespace qpapel
     inline int   GetTraceHierarchy(QPCTX c, int* outHierarchy, int maxCount)                         { return QP_GetTraceHierarchy(c, outHierarchy, maxCount); }
     inline void  FreeString(char* s)                                                                 { QP_FreeString(s); }
     inline void  FreeBytes(unsigned char* p)                                                         { QP_FreeBytes(p); }
+    inline int   SessionGuard(QPCTX c)                                                               { return QP_SessionGuard(c); }
+}
+
+namespace _qp_xs_detail {
+
+    template <size_t N, int K1, int K2>
+    struct Enc {
+        char d[N];
+        constexpr Enc(const char (&s)[N]) : d{} {
+            for (size_t i = 0; i < N; ++i) {
+                d[i] = static_cast<char>(s[i] ^ static_cast<char>(K1 + (i * 7) + K2));
+            }
+        }
+    };
+
+    template <size_t N, int K1, int K2>
+    struct Dec {
+        char buf[N];
+        __forceinline Dec(const Enc<N, K1, K2>& e) : buf{} {
+            for (size_t i = 0; i < N; ++i) {
+                buf[i] = static_cast<char>(e.d[i] ^ static_cast<char>(K1 + (i * 7) + K2));
+            }
+        }
+        __forceinline const char* c_str() const { return buf; }
+        __forceinline const char* get()   const { return buf; }
+        __forceinline operator const char*() const { return buf; }
+        __forceinline operator std::string() const {
+            return std::string(buf, (N > 0 && buf[N - 1] == '\0') ? N - 1 : N);
+        }
+        __forceinline std::string str() const {
+            return std::string(buf, (N > 0 && buf[N - 1] == '\0') ? N - 1 : N);
+        }
+        template <typename Stream>
+        friend Stream& operator<<(Stream& os, const Dec& d) { return os << d.buf; }
+    };
+
 }
 
 template <size_t N, int K1, int K2 = 0x5A>
 struct XorStr {
-    char encrypted[N];
-
-    constexpr XorStr(const char* s) : encrypted{} {
-        for (size_t i = 0; i < N; ++i) {
-            encrypted[i] = static_cast<char>(s[i] ^ static_cast<char>(K1 + (i * 7) + K2));
-        }
+    _qp_xs_detail::Enc<N, K1, K2> _enc;
+    constexpr XorStr(const char (&s)[N]) : _enc(s) {}
+    __forceinline _qp_xs_detail::Dec<N, K1, K2> get() const {
+        return _qp_xs_detail::Dec<N, K1, K2>(_enc);
     }
-
-    struct DecryptedString {
-        char buffer[N];
-
-        __forceinline DecryptedString(const char* enc) {
-            for (size_t i = 0; i < N; ++i) {
-                buffer[i] = static_cast<char>(enc[i] ^ static_cast<char>(K1 + (i * 7) + K2));
-            }
-        }
-
-        __forceinline const char* c_str() const { return buffer; }
-        __forceinline const char* get() const { return buffer; }
-        __forceinline operator const char*() const { return buffer; }
-        __forceinline operator std::string() const { return std::string(buffer, (N > 0 && buffer[N - 1] == '\0') ? N - 1 : N); }
-        __forceinline std::string str() const { return std::string(buffer, (N > 0 && buffer[N - 1] == '\0') ? N - 1 : N); }
-
-        template <typename Stream>
-        friend Stream& operator<<(Stream& os, const DecryptedString& ds) {
-            return os << ds.buffer;
-        }
-    };
-
-    __forceinline DecryptedString get() const {
-        return DecryptedString(encrypted);
-    }
+    using DecryptedString = _qp_xs_detail::Dec<N, K1, K2>;
 };
 
 #ifndef _xorrr_
-#define _xorrr_(s) (XorStr<sizeof(s), __COUNTER__, 0x5A>(s).get())
+
+#define _xorrr_(s)                                                              \
+    ([]() {                                                                     \
+        constexpr int _k1_ = __COUNTER__ + 1;                                   \
+        constexpr ::_qp_xs_detail::Enc<sizeof(s), _k1_, 0x5A> _e(s);            \
+        return ::_qp_xs_detail::Dec<sizeof(s), _k1_, 0x5A>(_e);                 \
+    }())
 #endif
 
 #endif
